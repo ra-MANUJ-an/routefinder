@@ -202,6 +202,10 @@ class MTVRPEnv(RL4COEnvBase):
     ) -> TensorDict:
         device = td.device
 
+        # If we're resetting with an existing TensorDict, ensure it includes 'prompt'
+        if 'prompt' not in td.keys():
+            td.set('prompt', self.generator.generate_prompt(td['locs'], batch_size))
+
         # Demands: linehaul (C) and backhaul (B). Backhaul defaults to 0
         demand_linehaul = torch.cat(
             [torch.zeros_like(td["demand_linehaul"][..., :1]), td["demand_linehaul"]],
@@ -237,6 +241,10 @@ class MTVRPEnv(RL4COEnvBase):
             "distance_limit", torch.full_like(demand_linehaul[..., :1], float("inf"))
         )
 
+        prompt = td.get("prompt")
+
+        # print(246, "_reset", batch_size, prompt.shape)
+        
         # Create reset TensorDict
         td_reset = TensorDict(
             {
@@ -275,6 +283,7 @@ class MTVRPEnv(RL4COEnvBase):
                     dtype=torch.bool,
                     device=device,
                 ),
+                "prompt": prompt,
             },
             batch_size=batch_size,
             device=device,
@@ -499,6 +508,7 @@ class MTVRPEnv(RL4COEnvBase):
     def _make_spec(self, td_params: TensorDict):
         # TODO: include extra vars (but we don't really need them for now)
         """Make the observation and action specs from the parameters."""
+        # Update observation spec to include the prompt field
         self.observation_spec = CompositeSpec(
             locs=BoundedTensorSpec(
                 low=self.generator.min_loc,
@@ -529,6 +539,11 @@ class MTVRPEnv(RL4COEnvBase):
             action_mask=UnboundedDiscreteTensorSpec(
                 shape=(self.generator.num_loc + 1, 1),
                 dtype=torch.bool,
+                device=self.device,
+            ),
+            prompt=UnboundedDiscreteTensorSpec(
+                shape=(1,),  # This spec might need adjustment based on how prompts are encoded
+                dtype=torch.long,
                 device=self.device,
             ),
             shape=(),
