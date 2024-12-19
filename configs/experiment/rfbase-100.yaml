@@ -85,4 +85,4 @@ trainer:
 callbacks:
   model_checkpoint:
     dirpath: logs/${logger.wandb.name}/${now:%Y-%m-%d}_${now:%H-%M-%S}/checkpoints
-    monitor: "val/reward/cvrp100"
+# monitor: "val/reward/cvrp100"
