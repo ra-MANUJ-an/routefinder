@@ -15,7 +15,7 @@ defaults:
 
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
-  - experiment: base.yaml # set baseline experiment
+  - experiment: rfbase-100.yaml # set baseline experiment
 
   # config for hyperparameter optimization
   - hparams_search: null
