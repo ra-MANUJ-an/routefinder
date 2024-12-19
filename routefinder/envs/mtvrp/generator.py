@@ -163,6 +163,9 @@ class MTVRPGenerator(Generator):
         # Locations
         locs = self.generate_locations(batch_size=batch_size, num_loc=self.num_loc)
 
+        # # Generate a textual description based on the problem variant
+        # prompts = self.generate_prompt(locs, batch_size)
+        
         # Vehicle capacity (C, B) - applies to both linehaul and backhaul
         vehicle_capacity = torch.full(
             (*batch_size, 1), self.capacity, dtype=torch.float32
@@ -197,6 +200,11 @@ class MTVRPGenerator(Generator):
             demand_linehaul /= vehicle_capacity
             vehicle_capacity /= vehicle_capacity
 
+        # Generate a textual description based on the problem variant
+        prompts = self.generate_prompt(locs, batch_size)
+
+        print(206, "_generate", prompts[0], len(prompts))
+        
         # Put all variables together
         td = TensorDict(
             {
@@ -211,6 +219,7 @@ class MTVRPGenerator(Generator):
                 "capacity_original": capacity_original,  # unscaled capacity (C)
                 "open_route": open_route,  # (O)
                 "speed": speed,  # common
+                "prompt": prompts,  # New field for the textual prompt
             },
             batch_size=batch_size,
         )
@@ -223,6 +232,73 @@ class MTVRPGenerator(Generator):
             # Not subsampling problems, i.e. return tensordict with all attributes
             return td
 
+    # def generate_prompt(self, locs, batch_size):
+    #     """
+    #     Generate a textual description or prompt for each instance based on its characteristics.
+    #     """
+    #     prompt_list = []
+    #     for i in range(batch_size[0]):
+    #         instance_prompt = []
+
+    #         # # Example conditions for adding to the prompt:
+    #         # if self.variant_probs["O"] > 0 and open_route[i].item():
+    #         #     instance_prompt.append("Open route")
+            
+    #         # if self.variant_probs["TW"] > 0 and not torch.all(time_windows[i] == 0).item():
+    #         #     instance_prompt.append("Time windows")
+            
+    #         # if self.variant_probs["L"] > 0 and distance_limit[i].item() != float("inf"):
+    #         #     instance_prompt.append("Distance limited")
+            
+    #         # if self.variant_probs["B"] > 0 and torch.any(demand_backhaul[i] > 0).item():
+    #         #     instance_prompt.append("Backhaul")
+
+    #         # Combine all relevant characteristics into a single string
+    #         prompt = "Standard Vehicle Routing Problem" #", ".join(instance_prompt) if instance_prompt else 
+    #         prompt_list.append(prompt)
+
+    #     return torch.tensor([prompt.encode() for prompt in prompt_list], dtype=torch.long)
+
+    def generate_prompt(self, locs, batch_size):
+        """
+        Generate a textual description or prompt for each instance based on its characteristics.
+        """
+        prompt_list = []
+        for i in range(batch_size[0]):
+            # method = "CVRP"  # Default to CVRP
+            features = []
+    
+            # if self.variant_probs["O"] > 0 and open_route[i].item():
+            #     features.append("Open")
+            
+            # if self.variant_probs["TW"] > 0 and not torch.all(time_windows[i] == 0).item():
+            #     features.append("TW")
+            
+            # if self.variant_probs["L"] > 0 and distance_limit[i].item() != float("inf"):
+            #     features.append("L")
+            
+            # if self.variant_probs["B"] > 0 and torch.any(demand_backhaul[i] > 0).item():
+            #     features.append("B")
+    
+            # # Combine features to determine method name
+            # if features:
+            #     method = "VRP" + "".join(features)
+            # else:
+            #     method = "CVRP"
+            
+            method = "Vehicle Routing Problem"
+            
+            # Depot coordinates
+            depot_coords = locs[i, 0].tolist()
+            
+            # Construct the prompt
+            prompt = f"Solve the {method} with a vehicle capacity of {self.capacity}, {self.num_loc} nodes and depot located at coordinates {depot_coords[0]:.2f}, {depot_coords[1]:.2f}."
+            
+            prompt_list.append(prompt)
+    
+        return prompt_list
+
+            
     def subsample_problems(self, td):
         """Create subproblems starting from seed probabilities depending on their variant.
         If random seed sampled in [0, 1] in batch is greater than prob, remove the constraint
