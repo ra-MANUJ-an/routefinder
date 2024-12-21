@@ -174,32 +174,18 @@ class RouteFinderEncoder(nn.Module):
         print(126, len(td['prompt']), len(td['locs']), len(td['prompt'][0]), len(td['locs'][0]))
         init_h = self.init_embedding(td)  # [B, N, H]
 
-        # # Process embedding
-        # h = init_h
-
-        # Process text through LLM in chunks to avoid memory issues
-        batch_size = td.size(0)
-        llm_batch_size = 64  # Adjust based on your GPU memory
-        all_llama_embeddings = []
-        
-        for i in range(0, batch_size, llm_batch_size):
-            batch_td = td[i:i + llm_batch_size]
-            with torch.no_grad():
-                tokenized_text = self.tokenizer(
-                    batch_td,
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=37  # Match your sequence length
-                ).to(td.device)
-                
+        # Extract text descriptions for embedding
+        if 'prompt' in td.keys():
+            # print(131, "forward", td['prompt'].tolist())
+            
+            with torch.no_grad():  # Don't compute gradients for LLM inference
+                tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
+                print(138, len(td['prompt'][-1]), len(tokenized_text[-1]))
                 llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
-                llama_embeddings = llama_outputs.hidden_states[-1]
-                llama_embeddings_projected = self.llm_projection(llama_embeddings)
-                all_llama_embeddings.append(llama_embeddings_projected)
-        
-        # Concatenate all LLM embeddings
-        llama_embeddings_projected = torch.cat(all_llama_embeddings, dim=0)
+                llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
+            
+            # Project LLM embeddings to match the dimension of the route finder
+            llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
         
         # Combine embeddings
         combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
