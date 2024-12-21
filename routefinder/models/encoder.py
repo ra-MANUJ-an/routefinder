@@ -14,6 +14,28 @@ from routefinder.models.nn.transformer import Normalization, TransformerBlock
 
 log = get_pylogger(__name__)
 
+# Option 1: Cross-attention between init_h and llama embeddings
+class CrossAttentionCombiner(nn.Module):
+    def __init__(self, embed_dim, num_heads=8):
+        super().__init__()
+        self.cross_attention = nn.MultiheadAttention(embed_dim, num_heads)
+        
+    def forward(self, init_h, llama_embeddings):
+        # init_h: [B, N, H], llama_embeddings: [B, S, H]
+        # Transpose for attention (seq_len, batch, hidden)
+        init_h = init_h.transpose(0, 1)
+        llama_embeddings = llama_embeddings.transpose(0, 1)
+        
+        # Cross attention: each node attends to all LLM tokens
+        combined, _ = self.cross_attention(
+            query=init_h,
+            key=llama_embeddings,
+            value=llama_embeddings
+        )
+        
+        # Return to original shape [B, N, H]
+        return combined.transpose(0, 1)
+
 
 class RouteFinderEncoder(nn.Module):
     """
@@ -82,6 +104,9 @@ class RouteFinderEncoder(nn.Module):
             Normalization(embed_dim, normalization) if use_post_layers_norm else None
         )
 
+        # In __init__
+        self.embedding_combiner = CrossAttentionCombiner(embed_dim=embed_dim)
+
     def _init_llama(self):
         """Initialize Llama-2 7B with memory optimizations"""
         # model_name = "//common/public/LLAMA2-HF/Llama-2-7b-chat-hf"  # or local path
@@ -145,7 +170,8 @@ class RouteFinderEncoder(nn.Module):
             print(145, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
             
             # Combine the embeddings (adjust based on how you want to merge them)
-            combined_embeddings = init_h + llama_embeddings_projected
+            combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
+            # combined_embeddings = init_h + llama_embeddings_projected
             # combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
     
             h = combined_embeddings
