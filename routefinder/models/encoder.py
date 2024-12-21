@@ -135,7 +135,7 @@ class RouteFinderEncoder(nn.Module):
             
             with torch.no_grad():  # Don't compute gradients for LLM inference
                 tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
-                print(138, len(td['prompt'][0]), len(tokenized_text[0]))
+                print(138, len(td['prompt'][-1]), len(tokenized_text[-1]))
                 llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
                 llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
             
