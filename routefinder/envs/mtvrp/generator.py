@@ -224,13 +224,14 @@ class MTVRPGenerator(Generator):
             batch_size=batch_size,
         )
         print(226, self.subsample)
-        if self.subsample:
-            # Subsample problems based on given instructions
-            td = self.subsample_problems(td)
-            return td
-        else:
-            # Not subsampling problems, i.e. return tensordict with all attributes
-            return td
+        return td
+        # if self.subsample:
+        #     # Subsample problems based on given instructions
+        #     td = self.subsample_problems(td)
+        #     return td
+        # else:
+        #     # Not subsampling problems, i.e. return tensordict with all attributes
+        #     return td
 
     # def generate_prompt(self, locs, batch_size):
     #     """
