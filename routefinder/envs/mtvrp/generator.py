@@ -201,7 +201,10 @@ class MTVRPGenerator(Generator):
             vehicle_capacity /= vehicle_capacity
 
         # Generate a textual description based on the problem variant
+        # prompts = self.generate_prompt(locs, batch_size)
+        print("Before prompt generation:", locs.shape)
         prompts = self.generate_prompt(locs, batch_size)
+        print("After prompt generation:", len(prompts))
 
         print(206, "_generate", prompts[0], prompts[-1], len(prompts), len(locs))
         
