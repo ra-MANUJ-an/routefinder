@@ -171,7 +171,7 @@ class RouteFinderEncoder(nn.Module):
 
         # Transfer to embedding space with initial embedding
         # print(125, td)
-        print(126, len(td['prompt']), len(td['locs']), len(td['prompt'][0]), len(td['locs'][0]))
+        print(174, len(td['prompt']), len(td['locs']), len(td['prompt'][0]), len(td['locs'][0]))
         init_h = self.init_embedding(td)  # [B, N, H]
 
         # Extract text descriptions for embedding
@@ -180,16 +180,16 @@ class RouteFinderEncoder(nn.Module):
             
             with torch.no_grad():  # Don't compute gradients for LLM inference
                 tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
-                print(138, len(td['prompt'][-1]), len(tokenized_text[-1]))
+                print(183, len(td['prompt'][-1]), len(tokenized_text[-1]))
                 llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
                 llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
-            
+            print(186)
             # Project LLM embeddings to match the dimension of the route finder
             llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
-        
+        print(189)
         # Combine embeddings
         combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
-        
+        print(192)
         # Process through transformer layers
         h = combined_embeddings
         for layer in self.layers:
