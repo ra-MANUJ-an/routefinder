@@ -145,7 +145,8 @@ class RouteFinderEncoder(nn.Module):
             print(145, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
             
             # Combine the embeddings (adjust based on how you want to merge them)
-            combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
+            combined_embeddings = init_h + llama_embeddings_projected
+            # combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
     
             h = combined_embeddings
         else:
