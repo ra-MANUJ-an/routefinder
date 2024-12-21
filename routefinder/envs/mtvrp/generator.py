@@ -162,7 +162,7 @@ class MTVRPGenerator(Generator):
     def _generate(self, batch_size) -> TensorDict:
         # Locations
         locs = self.generate_locations(batch_size=batch_size, num_loc=self.num_loc)
-
+        print(165, batch_size, self.num_loc, len(locs))
         # # Generate a textual description based on the problem variant
         # prompts = self.generate_prompt(locs, batch_size)
         
