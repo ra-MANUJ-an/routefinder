@@ -123,7 +123,7 @@ class RouteFinderEncoder(nn.Module):
 
         # Transfer to embedding space with initial embedding
         # print(125, td)
-        print(126, len(td['prompt']), len(td['locs']))
+        print(126, len(td['prompt']), len(td['locs']), len(td['prompt'][0]), len(td['locs'][0]))
         init_h = self.init_embedding(td)  # [B, N, H]
 
         # # Process embedding
@@ -135,13 +135,14 @@ class RouteFinderEncoder(nn.Module):
             
             with torch.no_grad():  # Don't compute gradients for LLM inference
                 tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
+                print(138, len(td['prompt'][0]), tokenized_text.shape)
                 llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
                 llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
             
             # Project LLM embeddings to match the dimension of the route finder
             llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
 
-            print(143, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
+            print(145, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
             
             # Combine the embeddings (adjust based on how you want to merge them)
             combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
