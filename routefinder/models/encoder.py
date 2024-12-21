@@ -122,7 +122,8 @@ class RouteFinderEncoder(nn.Module):
     ) -> Tuple[Tensor, Tensor]:
 
         # Transfer to embedding space with initial embedding
-        print(125, td)
+        # print(125, td)
+        print(126, td['prompt'], td['locs'], td['locs'].shape)
         init_h = self.init_embedding(td)  # [B, N, H]
 
         # # Process embedding
