@@ -123,7 +123,7 @@ class RouteFinderEncoder(nn.Module):
 
         # Transfer to embedding space with initial embedding
         # print(125, td)
-        print(126, td['prompt'], td['locs'], td['locs'].shape)
+        print(126, len(td['prompt']), len(td['locs']))
         init_h = self.init_embedding(td)  # [B, N, H]
 
         # # Process embedding
