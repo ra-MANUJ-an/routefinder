@@ -14,27 +14,50 @@ from routefinder.models.nn.transformer import Normalization, TransformerBlock
 
 log = get_pylogger(__name__)
 
-# Option 1: Cross-attention between init_h and llama embeddings
-class CrossAttentionCombiner(nn.Module):
-    def __init__(self, embed_dim, num_heads=8):
+class BatchProcessingCombiner(nn.Module):
+    def __init__(self, embed_dim):
         super().__init__()
-        self.cross_attention = nn.MultiheadAttention(embed_dim, num_heads)
+        self.projection = nn.Linear(embed_dim * 2, embed_dim)
+        self.norm = nn.LayerNorm(embed_dim)
         
     def forward(self, init_h, llama_embeddings):
-        # init_h: [B, N, H], llama_embeddings: [B, S, H]
-        # Transpose for attention (seq_len, batch, hidden)
-        init_h = init_h.transpose(0, 1)
-        llama_embeddings = llama_embeddings.transpose(0, 1)
+        # Get shapes
+        B_init, N, H = init_h.shape
+        B_llama, S, _ = llama_embeddings.shape
         
-        # Cross attention: each node attends to all LLM tokens
-        combined, _ = self.cross_attention(
-            query=init_h,
-            key=llama_embeddings,
-            value=llama_embeddings
-        )
+        # Handle batch size mismatch by processing in chunks
+        chunk_size = min(B_init, B_llama)
+        combined_chunks = []
         
-        # Return to original shape [B, N, H]
-        return combined.transpose(0, 1)
+        for i in range(0, B_init, chunk_size):
+            # Get current chunk of init_h
+            end_idx = min(i + chunk_size, B_init)
+            init_chunk = init_h[i:end_idx]
+            
+            # Get or repeat llama embeddings as needed
+            if B_llama == B_init:
+                llama_chunk = llama_embeddings[i:end_idx]
+            else:
+                # Repeat or slice llama embeddings to match batch size
+                llama_chunk = llama_embeddings[:chunk_size]
+                if end_idx - i < chunk_size:
+                    llama_chunk = llama_chunk[:end_idx-i]
+            
+            # Mean pool LLM embeddings for this chunk
+            llama_pooled = llama_chunk.mean(dim=1, keepdim=True)  # [chunk_size, 1, H]
+            
+            # Expand to match number of nodes
+            llama_expanded = llama_pooled.expand(-1, N, -1)  # [chunk_size, N, H]
+            
+            # Combine embeddings for this chunk
+            chunk_combined = torch.cat([init_chunk, llama_expanded], dim=-1)  # [chunk_size, N, 2H]
+            chunk_combined = self.projection(chunk_combined)  # [chunk_size, N, H]
+            chunk_combined = self.norm(chunk_combined)
+            
+            combined_chunks.append(chunk_combined)
+        
+        # Concatenate all processed chunks
+        return torch.cat(combined_chunks, dim=0)  # [B_init, N, H]
 
 
 class RouteFinderEncoder(nn.Module):
@@ -105,7 +128,7 @@ class RouteFinderEncoder(nn.Module):
         )
 
         # In __init__
-        self.embedding_combiner = CrossAttentionCombiner(embed_dim=embed_dim)
+        self.embedding_combiner = BatchProcessingCombiner(embed_dim=embed_dim)
 
     def _init_llama(self):
         """Initialize Llama-2 7B with memory optimizations"""
@@ -154,37 +177,75 @@ class RouteFinderEncoder(nn.Module):
         # # Process embedding
         # h = init_h
 
-        # Extract text descriptions for embedding
-        if 'prompt' in td.keys():
-            # print(131, "forward", td['prompt'].tolist())
-            
-            with torch.no_grad():  # Don't compute gradients for LLM inference
-                tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
-                print(138, len(td['prompt'][-1]), len(tokenized_text[-1]))
+        # Process text through LLM in chunks to avoid memory issues
+        batch_size = td.size(0)
+        llm_batch_size = 64  # Adjust based on your GPU memory
+        all_llama_embeddings = []
+        
+        for i in range(0, batch_size, llm_batch_size):
+            batch_td = td[i:i + llm_batch_size]
+            with torch.no_grad():
+                tokenized_text = self.tokenizer(
+                    batch_td,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=37  # Match your sequence length
+                ).to(td.device)
+                
                 llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
-                llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
-            
-            # Project LLM embeddings to match the dimension of the route finder
-            llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
-
-            print(145, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
-            
-            # Combine the embeddings (adjust based on how you want to merge them)
-            combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
-            # combined_embeddings = init_h + llama_embeddings_projected
-            # combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
-    
-            h = combined_embeddings
-        else:
-            h = init_h
+                llama_embeddings = llama_outputs.hidden_states[-1]
+                llama_embeddings_projected = self.llm_projection(llama_embeddings)
+                all_llama_embeddings.append(llama_embeddings_projected)
         
+        # Concatenate all LLM embeddings
+        llama_embeddings_projected = torch.cat(all_llama_embeddings, dim=0)
         
+        # Combine embeddings
+        combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
+        
+        # Process through transformer layers
+        h = combined_embeddings
         for layer in self.layers:
             h = layer(h, mask)
-
-        # https://github.com/meta-llama/llama/blob/8fac8befd776bc03242fe7bc2236cdb41b6c609c/llama/model.py#L493
+        
         if self.post_layers_norm is not None:
             h = self.post_layers_norm(h)
+        
+        return h, init_h
 
-        # Return latent representation
-        return h, init_h  # [B, N, H]
+
+        # # Extract text descriptions for embedding
+        # if 'prompt' in td.keys():
+        #     # print(131, "forward", td['prompt'].tolist())
+            
+        #     with torch.no_grad():  # Don't compute gradients for LLM inference
+        #         tokenized_text = self.tokenizer(td['prompt'].tolist(), return_tensors="pt", padding=True, truncation=True).to(self.device)
+        #         print(138, len(td['prompt'][-1]), len(tokenized_text[-1]))
+        #         llama_outputs = self.llama(**tokenized_text, output_hidden_states=True)
+        #         llama_embeddings = llama_outputs.hidden_states[-1]  # [B, S, LLM_H]
+            
+        #     # Project LLM embeddings to match the dimension of the route finder
+        #     llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
+
+        #     print(145, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
+            
+        #     # Combine the embeddings (adjust based on how you want to merge them)
+        #     combined_embeddings = self.embedding_combiner(init_h, llama_embeddings_projected)
+        #     # combined_embeddings = init_h + llama_embeddings_projected
+        #     # combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
+    
+        #     h = combined_embeddings
+        # else:
+        #     h = init_h
+        
+        
+        # for layer in self.layers:
+        #     h = layer(h, mask)
+
+        # # https://github.com/meta-llama/llama/blob/8fac8befd776bc03242fe7bc2236cdb41b6c609c/llama/model.py#L493
+        # if self.post_layers_norm is not None:
+        #     h = self.post_layers_norm(h)
+
+        # # Return latent representation
+        # return h, init_h  # [B, N, H]
