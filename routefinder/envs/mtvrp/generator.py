@@ -263,7 +263,7 @@ class MTVRPGenerator(Generator):
         """
         Generate a textual description or prompt for each instance based on its characteristics.
         """
-        print(266, batch_size)
+        print(266, batch_size, len(locs))
         prompt_list = []
         for i in range(batch_size[0]):
             # method = "CVRP"  # Default to CVRP
