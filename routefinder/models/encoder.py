@@ -122,6 +122,7 @@ class RouteFinderEncoder(nn.Module):
     ) -> Tuple[Tensor, Tensor]:
 
         # Transfer to embedding space with initial embedding
+        print(125, td)
         init_h = self.init_embedding(td)  # [B, N, H]
 
         # # Process embedding
@@ -139,7 +140,7 @@ class RouteFinderEncoder(nn.Module):
             # Project LLM embeddings to match the dimension of the route finder
             llama_embeddings_projected = self.llm_projection(llama_embeddings)  # [B, S, H]
 
-            print(141, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
+            print(143, "forward", init_h.shape, llama_embeddings_projected.shape, llama_embeddings.shape)
             
             # Combine the embeddings (adjust based on how you want to merge them)
             combined_embeddings = init_h + llama_embeddings_projected[:, :init_h.size(1)]
